@@ -52,7 +52,8 @@ def get_loaders(
 
     return train_loader, val_loader
 
-def check_accuracy(loader, model, device="cuda"):
+
+def check_accuracy(loader, model, device="cuda", wandb=False):
     num_correct = 0
     num_pixels = 0
     dice_score = 0
@@ -74,7 +75,10 @@ def check_accuracy(loader, model, device="cuda"):
         f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}"
     )
     print(f"Dice score: {dice_score/len(loader)}")
+
     model.train()
+    if wandb:
+        wandb.log({'accuracy': num_correct/num_pixels, 'dice_score': dice_score/len(loader)})
 
 def save_predictions_as_imgs(
     loader, model, folder="saved_images/", device="cuda"

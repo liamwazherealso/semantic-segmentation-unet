@@ -12,6 +12,7 @@ from utils import (
     check_accuracy,
     save_predictions_as_imgs,
 )
+import click
 
 # Hyperparameters etc.
 LEARNING_RATE = 1e-4
@@ -21,14 +22,13 @@ NUM_EPOCHS = 3
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 160  # 1280 originally
 IMAGE_WIDTH = 240  # 1918 originally
-PIN_MEMORY = True
-LOAD_MODEL = False
 TRAIN_IMG_DIR = "data/train_images/"
 TRAIN_MASK_DIR = "data/train_masks/"
 VAL_IMG_DIR = "data/val_images/"
 VAL_MASK_DIR = "data/val_masks/"
 
-def train_fn(loader, model, optimizer, loss_fn, scaler):
+
+def train_fn(loader, model, optimizer, loss_fn, scaler, wandb=False):
     loop = tqdm(loader)
 
     for batch_idx, (data, targets) in enumerate(loop):
@@ -39,6 +39,8 @@ def train_fn(loader, model, optimizer, loss_fn, scaler):
         with torch.cuda.amp.autocast():
             predictions = model(data)
             loss = loss_fn(predictions, targets)
+            if wandb:
+                wandb.log({'loss': loss})
 
         # backward
         optimizer.zero_grad()
@@ -49,8 +51,23 @@ def train_fn(loader, model, optimizer, loss_fn, scaler):
         # update tqdm loop
         loop.set_postfix(loss=loss.item())
 
+@click.command()
+@click.option('-w', '--wandb', is_flag=True, default=False, help="Use wandb as experiment tracker")
+@click.option('-l', '--load-model', is_flag=True, default=False, help="Load previous checkpoint")
+@click.option('--pin-memory',  is_flag=True, default=True, help="Pin memory for data loader")
+def main(wandb, load_model, pin_memory):
+    if wandb:
+        import wandb
+        wandb.init(project="semantic-segmentation-unet")
 
-def main():
+        wandb.config.learning_rate = LEARNING_RATE
+        wandb.config.batch_size = BATCH_SIZE
+        wandb.config.num_workers = NUM_WORKERS
+        wandb.config.image_height = IMAGE_HEIGHT
+        wandb.config.image_width = IMAGE_WIDTH
+        wandb.config.loaded = load_model
+
+
     train_transform = A.Compose(
         [
             A.Resize(height=IMAGE_HEIGHT, width=IMAGE_WIDTH),
@@ -91,28 +108,27 @@ def main():
         train_transform,
         val_transforms,
         NUM_WORKERS,
-        PIN_MEMORY,
+        pin_memory,
     )
 
-    if LOAD_MODEL:
+    if load_model:
         load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)
-
 
     check_accuracy(val_loader, model, device=DEVICE)
     scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(NUM_EPOCHS):
-        train_fn(train_loader, model, optimizer, loss_fn, scaler)
+        train_fn(train_loader, model, optimizer, loss_fn, scaler, wandb=wandb)
 
         # save model
         checkpoint = {
             "state_dict": model.state_dict(),
-            "optimizer":optimizer.state_dict(),
+            "optimizer": optimizer.state_dict(),
         }
         save_checkpoint(checkpoint)
 
         # check accuracy
-        check_accuracy(val_loader, model, device=DEVICE)
+        check_accuracy(val_loader, model, device=DEVICE, wandb=wandb)
 
         # print some examples to a folder
         save_predictions_as_imgs(

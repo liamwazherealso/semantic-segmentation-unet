@@ -167,3 +167,6 @@ saved_images/
 
 # checkpoint
 *.tar
+
+# wandb
+wandb/
