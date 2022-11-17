@@ -2,6 +2,18 @@ import torch
 import torchvision
 from dataset import CarvanaDataset
 from torch.utils.data import DataLoader
+import yaml
+
+
+def load_yaml(path):
+    with open(path, 'r') as stream:
+        return yaml.safe_load(stream)
+
+
+def load_metadata(model_name):
+    with open(f"/home/lpieri/ml/semantic_segmentation_unet/models/{model_name}.yaml", 'r') as stream:
+        return yaml.safe_load(stream)
+
 
 def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
     print("=> Saving checkpoint")
@@ -10,6 +22,23 @@ def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
 def load_checkpoint(checkpoint, model):
     print("=> Loading checkpoint")
     model.load_state_dict(checkpoint["state_dict"])
+
+
+class Config:
+    def __init__(self):
+        # Hyperparameters etc.
+        self.LEARNING_RATE = 1e-4
+        self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        self.BATCH_SIZE = 16
+        self.NUM_EPOCHS = 3
+        self.NUM_WORKERS = 2
+        self.IMAGE_HEIGHT = 160  # 1280 originally
+        self.IMAGE_WIDTH = 240  # 1918 originally
+        self.TRAIN_IMG_DIR = "/home/lpieri/ml/semantic_segmentation_unet/data/train_images/"
+        self.TRAIN_MASK_DIR = "/home/lpieri/ml/semantic_segmentation_unet/data/train_masks/"
+        self.VAL_IMG_DIR = "/home/lpieri/ml/semantic_segmentation_unet/data/val_images/"
+        self.VAL_MASK_DIR = "/home/lpieri/ml/semantic_segmentation_unet/data/val_masks/"
+
 
 def get_loaders(
     train_dir,
@@ -53,7 +82,7 @@ def get_loaders(
     return train_loader, val_loader
 
 
-def check_accuracy(loader, model, device="cuda", wandb=False):
+def check_accuracy(loader, model, device="cuda", wandb=False, prune=False):
     num_correct = 0
     num_pixels = 0
     dice_score = 0
@@ -78,7 +107,12 @@ def check_accuracy(loader, model, device="cuda", wandb=False):
 
     model.train()
     if wandb:
-        wandb.log({'accuracy': num_correct/num_pixels, 'dice_score': dice_score/len(loader)})
+        if prune:
+            wandb.log({'dice_score_delta': dice_score/len(loader) - prune['dice_score'],
+                                 'prune_amount': prune['amount']
+                                 })
+        else:
+            wandb.log({'accuracy': num_correct/num_pixels, 'dice_score': dice_score/len(loader)})
 
 def save_predictions_as_imgs(
     loader, model, folder="saved_images/", device="cuda"
