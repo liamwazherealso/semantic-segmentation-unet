@@ -1,0 +1,4 @@
+outs:
+- md5: d0c902d56ad7a35f5286f7e949023943
+  size: 372595461
+  path: 22_10_16_unet_seal.pth.tar
